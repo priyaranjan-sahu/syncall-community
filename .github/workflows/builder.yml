@@ -14,7 +14,7 @@ on:
         required: false
         default: "1.0.0"
       destination:
-        description: "Where to store/publish the generated applications"
+        description: "Where to store/publish the generated applications (private_repo, public_repo, both, artifacts_only)"
         type: choice
         required: true
         default: "private_repo"
@@ -55,10 +55,10 @@ jobs:
         shell: bash
         run: |
           echo "================================================================="
-          echo "🚀 TARGET REPOSITORY: priyaranjan-sahu/syncall"
-          echo "🌿 SELECTED BRANCH:   ${{ inputs.branch || inputs.ref || github.event.client_payload.branch || 'main' }}"
-          echo "📌 CHECKED OUT SHA:   $(git rev-parse HEAD)"
-          echo "📝 COMMIT MESSAGE:    $(git log -1 --pretty=%s)"
+          echo "TARGET REPOSITORY: priyaranjan-sahu/syncall"
+          echo "SELECTED BRANCH:   ${{ inputs.branch || inputs.ref || github.event.client_payload.branch || 'main' }}"
+          echo "CHECKED OUT SHA:   $(git rev-parse HEAD)"
+          echo "COMMIT MESSAGE:    $(git log -1 --pretty=%s)"
           echo "================================================================="
 
       - name: Set up Flutter
@@ -109,9 +109,9 @@ jobs:
       - name: Log Target Branch & Commit Info
         run: |
           echo "================================================================="
-          echo "🚀 TARGET REPOSITORY: priyaranjan-sahu/syncall"
-          echo "🌿 SELECTED BRANCH:   ${{ inputs.branch || inputs.ref || github.event.client_payload.branch || 'main' }}"
-          echo "📌 CHECKED OUT SHA:   $(git rev-parse HEAD)"
+          echo "TARGET REPOSITORY: priyaranjan-sahu/syncall"
+          echo "SELECTED BRANCH:   ${{ inputs.branch || inputs.ref || github.event.client_payload.branch || 'main' }}"
+          echo "CHECKED OUT SHA:   $(git rev-parse HEAD)"
           echo "================================================================="
 
       - name: Install Linux build dependencies
@@ -163,9 +163,9 @@ jobs:
       - name: Log Target Branch & Commit Info
         run: |
           echo "================================================================="
-          echo "🚀 TARGET REPOSITORY: priyaranjan-sahu/syncall"
-          echo "🌿 SELECTED BRANCH:   ${{ inputs.branch || inputs.ref || github.event.client_payload.branch || 'main' }}"
-          echo "📌 CHECKED OUT SHA:   $(git rev-parse HEAD)"
+          echo "TARGET REPOSITORY: priyaranjan-sahu/syncall"
+          echo "SELECTED BRANCH:   ${{ inputs.branch || inputs.ref || github.event.client_payload.branch || 'main' }}"
+          echo "CHECKED OUT SHA:   $(git rev-parse HEAD)"
           echo "================================================================="
 
       - name: Set up Java 17
@@ -218,9 +218,9 @@ jobs:
       - name: Log Target Branch & Commit Info
         run: |
           echo "================================================================="
-          echo "🚀 TARGET REPOSITORY: priyaranjan-sahu/syncall"
-          echo "🌿 SELECTED BRANCH:   ${{ inputs.branch || inputs.ref || github.event.client_payload.branch || 'main' }}"
-          echo "📌 CHECKED OUT SHA:   $(git rev-parse HEAD)"
+          echo "TARGET REPOSITORY: priyaranjan-sahu/syncall"
+          echo "SELECTED BRANCH:   ${{ inputs.branch || inputs.ref || github.event.client_payload.branch || 'main' }}"
+          echo "CHECKED OUT SHA:   $(git rev-parse HEAD)"
           echo "================================================================="
 
       - name: Set up Flutter
@@ -267,9 +267,9 @@ jobs:
       - name: Log Target Branch & Commit Info
         run: |
           echo "================================================================="
-          echo "🚀 TARGET REPOSITORY: priyaranjan-sahu/syncall"
-          echo "🌿 SELECTED BRANCH:   ${{ inputs.branch || inputs.ref || github.event.client_payload.branch || 'main' }}"
-          echo "📌 CHECKED OUT SHA:   $(git rev-parse HEAD)"
+          echo "TARGET REPOSITORY: priyaranjan-sahu/syncall"
+          echo "SELECTED BRANCH:   ${{ inputs.branch || inputs.ref || github.event.client_payload.branch || 'main' }}"
+          echo "CHECKED OUT SHA:   $(git rev-parse HEAD)"
           echo "================================================================="
 
       - name: Set up Flutter
@@ -302,7 +302,7 @@ jobs:
   # ==========================================
   publish-release:
     name: Store & Publish Application Packages
-    if: ${{ inputs.destination != 'artifacts_only' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.destination != 'artifacts_only' }}
     needs: [build-windows, build-linux, build-android, build-web, build-macos]
     runs-on: ubuntu-latest
     permissions:
@@ -324,26 +324,24 @@ jobs:
         run: |
           ver="${{ inputs.version || '1.0.0' }}"
           target_branch="${{ inputs.branch || inputs.ref || 'main' }}"
-          NOTES="### SyncAll v$ver — Multi-Cloud Desktop & Mobile Client
-
-**Build Details:**
-- **Private Source Branch**: \`$target_branch\`
-- **Built At**: $(date -u '+%Y-%m-%d %H:%M UTC')
-- **Runner**: GitHub Actions (Free Public Compute)
-
-**Included Application Packages:**
-- 🪟 Windows: \`SyncAll-v$ver-Windows-x64.zip\`
-- 🐧 Linux: \`SyncAll-v$ver-Linux-x64.tar.gz\`
-- 🤖 Android: \`SyncAll-v$ver-Android.apk\`
-- 🌐 Web: \`SyncAll-v$ver-Web.zip\`
-- 🍎 macOS: \`SyncAll-v$ver-macOS.zip\`
-
-#### Cryptographic Checksums (SHA-256)
-\`\`\`
-$(cat release-assets/SHA256SUMS.txt)
-\`\`\`
-"
-          echo "$NOTES" > release-notes.md
+          echo "### SyncAll v$ver — Multi-Cloud Desktop & Mobile Client" > release-notes.md
+          echo "" >> release-notes.md
+          echo "**Build Details:**" >> release-notes.md
+          echo "- **Private Source Branch**: $target_branch" >> release-notes.md
+          echo "- **Built At**: $(date -u '+%Y-%m-%d %H:%M UTC')" >> release-notes.md
+          echo "- **Runner**: GitHub Actions (Free Public Compute)" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "**Included Application Packages:**" >> release-notes.md
+          echo "- Windows: SyncAll-v$ver-Windows-x64.zip" >> release-notes.md
+          echo "- Linux: SyncAll-v$ver-Linux-x64.tar.gz" >> release-notes.md
+          echo "- Android: SyncAll-v$ver-Android.apk" >> release-notes.md
+          echo "- Web: SyncAll-v$ver-Web.zip" >> release-notes.md
+          echo "- macOS: SyncAll-v$ver-macOS.zip" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "#### Cryptographic Checksums (SHA-256)" >> release-notes.md
+          echo '```' >> release-notes.md
+          cat release-assets/SHA256SUMS.txt >> release-notes.md
+          echo '```' >> release-notes.md
 
       # -------------------------------------------------------------
       # Target A: Store directly in the PRIVATE REPO (priyaranjan-sahu/syncall)
