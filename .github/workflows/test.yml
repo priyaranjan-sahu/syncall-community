@@ -3,10 +3,10 @@ name: Automated Multi-Platform Testing
 on:
   workflow_dispatch:
     inputs:
-      ref:
-        description: "Private repo branch or tag to test (blank = main)"
+      branch:
+        description: "Branch or Tag from private repo (priyaranjan-sahu/syncall) to test"
         type: string
-        required: false
+        required: true
         default: "main"
       run_analyze:
         description: "Run flutter analyze alongside tests"
@@ -31,12 +31,25 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout private source
+      - name: Checkout private source (${{ inputs.branch || github.event.client_payload.branch || 'main' }})
         uses: actions/checkout@v4
         with:
           repository: priyaranjan-sahu/syncall
-          ref: ${{ github.event.inputs.ref || github.event.client_payload.ref || 'main' }}
+          ref: ${{ inputs.branch || inputs.ref || github.event.client_payload.branch || github.event.client_payload.ref || 'main' }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          fetch-depth: 0
+
+      - name: Log Target Branch & Commit Info
+        shell: bash
+        run: |
+          echo "================================================================="
+          echo "🚀 TARGET REPOSITORY: priyaranjan-sahu/syncall"
+          echo "🌿 SELECTED BRANCH:   ${{ inputs.branch || inputs.ref || github.event.client_payload.branch || 'main' }}"
+          echo "📌 CHECKED OUT SHA:   $(git rev-parse HEAD)"
+          echo "📝 COMMIT MESSAGE:    $(git log -1 --pretty=%s)"
+          echo "👤 COMMIT AUTHOR:     $(git log -1 --pretty='%an <%ae>')"
+          echo "🕒 COMMIT DATE:       $(git log -1 --pretty=%cd)"
+          echo "================================================================="
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
