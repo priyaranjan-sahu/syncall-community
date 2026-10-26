@@ -1,0 +1,13 @@
+# Git ignore for SyncAll Community public runner repository
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+dist/
+build/
+coverage/
+release-assets/
+.env*
+*.key
+*.pem
+*.keystore

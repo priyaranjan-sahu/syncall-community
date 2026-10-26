@@ -1,0 +1,305 @@
+name: Cross-Platform Multi-Cloud Build Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Private repo branch or tag to build (blank = main)"
+        type: string
+        required: false
+        default: "main"
+      version:
+        description: "Version identifier (e.g. 1.0.0)"
+        type: string
+        required: false
+        default: "1.0.0"
+      create_release:
+        description: "Publish as public GitHub Release on syncall-community"
+        type: boolean
+        required: false
+        default: false
+      is_prerelease:
+        description: "Mark GitHub Release as pre-release"
+        type: boolean
+        required: false
+        default: false
+  repository_dispatch:
+    types: [syncall-build]
+
+permissions:
+  contents: write
+
+jobs:
+  # ==========================================
+  # 1. Windows Desktop Builder (x64)
+  # ==========================================
+  build-windows:
+    name: Build Windows Desktop
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout private source
+        uses: actions/checkout@v4
+        with:
+          repository: priyaranjan-sahu/syncall
+          ref: ${{ github.event.inputs.ref || github.event.client_payload.ref || 'main' }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows Executable
+        run: flutter build windows --release
+
+      - name: Package Windows Binary
+        shell: pwsh
+        run: |
+          $ver = "${{ github.event.inputs.version || '1.0.0' }}"
+          $distDir = "dist"
+          New-Item -ItemType Directory -Path $distDir -Force | Out-Null
+          $zipName = "$distDir/SyncAll-v$ver-Windows-x64.zip"
+          Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath $zipName -Force
+          Write-Host "Created $zipName"
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncAll-Windows-x64
+          path: dist/SyncAll-*-Windows-x64.zip
+          retention-days: 14
+
+  # ==========================================
+  # 2. Linux Desktop Builder (x64 GTK)
+  # ==========================================
+  build-linux:
+    name: Build Linux Desktop
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout private source
+        uses: actions/checkout@v4
+        with:
+          repository: priyaranjan-sahu/syncall
+          ref: ${{ github.event.inputs.ref || github.event.client_payload.ref || 'main' }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Linux Bundle
+        run: flutter build linux --release
+
+      - name: Package Linux Binary
+        run: |
+          ver="${{ github.event.inputs.version || '1.0.0' }}"
+          mkdir -p dist
+          tar -czvf "dist/SyncAll-v${ver}-Linux-x64.tar.gz" -C build/linux/x64/release/bundle .
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncAll-Linux-x64
+          path: dist/SyncAll-*-Linux-x64.tar.gz
+          retention-days: 14
+
+  # ==========================================
+  # 3. Android APK Builder
+  # ==========================================
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout private source
+        uses: actions/checkout@v4
+        with:
+          repository: priyaranjan-sahu/syncall
+          ref: ${{ github.event.inputs.ref || github.event.client_payload.ref || 'main' }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Android Release APK
+        run: flutter build apk --release
+
+      - name: Package Android Artifact
+        run: |
+          ver="${{ github.event.inputs.version || '1.0.0' }}"
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/SyncAll-v${ver}-Android.apk"
+
+      - name: Upload Android Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncAll-Android-APK
+          path: dist/SyncAll-*-Android.apk
+          retention-days: 14
+
+  # ==========================================
+  # 4. Web Distribution Builder
+  # ==========================================
+  build-web:
+    name: Build Web App
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout private source
+        uses: actions/checkout@v4
+        with:
+          repository: priyaranjan-sahu/syncall
+          ref: ${{ github.event.inputs.ref || github.event.client_payload.ref || 'main' }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Web Target
+        run: flutter build web --release
+
+      - name: Package Web Archive
+        run: |
+          ver="${{ github.event.inputs.version || '1.0.0' }}"
+          mkdir -p dist
+          (cd build/web && zip -r "../../dist/SyncAll-v${ver}-Web.zip" .)
+
+      - name: Upload Web Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncAll-Web
+          path: dist/SyncAll-*-Web.zip
+          retention-days: 14
+
+  # ==========================================
+  # 5. macOS Desktop Builder
+  # ==========================================
+  build-macos:
+    name: Build macOS Desktop
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout private source
+        uses: actions/checkout@v4
+        with:
+          repository: priyaranjan-sahu/syncall
+          ref: ${{ github.event.inputs.ref || github.event.client_payload.ref || 'main' }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS App
+        run: flutter build macos --release
+
+      - name: Package macOS App
+        run: |
+          ver="${{ github.event.inputs.version || '1.0.0' }}"
+          mkdir -p dist
+          (cd build/macos/Build/Products/Release && zip -r "../../../../../dist/SyncAll-v${ver}-macOS.zip" syncall.app)
+
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncAll-macOS
+          path: dist/SyncAll-*-macOS.zip
+          retention-days: 14
+
+  # ==========================================
+  # 6. Publish Official GitHub Release
+  # ==========================================
+  publish-release:
+    name: Publish GitHub Release
+    if: ${{ github.event.inputs.create_release == 'true' || github.event.inputs.create_release == true }}
+    needs: [build-windows, build-linux, build-android, build-web, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Compute SHA-256 Checksums
+        working-directory: release-assets
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create or Update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ver="${{ github.event.inputs.version || '1.0.0' }}"
+          tag="v$ver"
+          title="SyncAll v$ver — Multi-Cloud Desktop Release"
+          prerelease_flag=""
+          if [ "${{ github.event.inputs.is_prerelease }}" = "true" ]; then
+            prerelease_flag="--prerelease"
+          fi
+
+          NOTES="### SyncAll v$ver — Zero-Knowledge Multi-Cloud Desktop Client
+
+**Release Highlights:**
+- ☁️ Multi-Cloud Mesh Topology with live latency & packet visualizer
+- 🗄️ Unified Virtual Super-Drive (RAID-Cloud) aggregator
+- 🔐 Client-side AES-256-CBC Zero-Knowledge Streaming Encryption
+- ⚡ 3-Way Snapshot Synchronization with offline tombstone tracking
+- 🚀 AI Bandwidth Autopilot & network-aware chunking
+
+#### Checksums (SHA-256)
+\`\`\`
+$(cat release-assets/SHA256SUMS.txt)
+\`\`\`
+"
+
+          echo "$NOTES" > release-notes.md
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --title "$title" --notes-file release-notes.md $prerelease_flag
+          else
+            gh release create "$tag" release-assets/* --repo "$GITHUB_REPOSITORY" --title "$title" --notes-file release-notes.md $prerelease_flag
+          fi

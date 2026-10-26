@@ -1,0 +1,68 @@
+name: Automated Multi-Platform Testing
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Private repo branch or tag to test (blank = main)"
+        type: string
+        required: false
+        default: "main"
+      run_analyze:
+        description: "Run flutter analyze alongside tests"
+        type: boolean
+        required: false
+        default: true
+  repository_dispatch:
+    types: [syncall-test]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout private source
+        uses: actions/checkout@v4
+        with:
+          repository: priyaranjan-sahu/syncall
+          ref: ${{ github.event.inputs.ref || github.event.client_payload.ref || 'main' }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Verify Flutter Environment
+        run: |
+          flutter --version
+          flutter doctor -v
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run Flutter Static Analysis
+        if: ${{ github.event.inputs.run_analyze != false }}
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run Unit & Widget Tests
+        run: flutter test --coverage
+
+      - name: Upload Test Coverage
+        if: matrix.os == 'ubuntu-latest' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-coverage-report
+          path: coverage/
+          if-no-files-found: ignore

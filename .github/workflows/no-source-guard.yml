@@ -1,0 +1,64 @@
+name: Public Repo Source Guard
+
+# SyncAll application source code is private (priyaranjan-sahu/syncall).
+# This repository (priyaranjan-sahu/syncall-community) exists exclusively to hold the
+# public CI/CD runner workflows, release distribution pipelines, and community landing docs.
+#
+# A stray push of source would publish code that was meant to stay private.
+# This workflow verifies on every push or PR that only allowed public files exist here.
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-application-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+        with:
+          repository: priyaranjan-sahu/syncall-community
+          path: public-repo
+
+      - name: Verify zero application source code leaks
+        working-directory: public-repo
+        run: |
+          set -euo pipefail
+
+          # Allowlist of top-level paths permitted in the public repository
+          allowed='^\.github/|^\.gitignore$|^\.gitattributes$|^LICENSE|^README\.md$|^SECURITY\.md$|^PRIVACY_POLICY\.md$|^TERMS_AND_CONDITIONS\.md$|^RELEASE_NOTES\.md$|^assets/'
+
+          unexpected="$(git ls-files | grep -vE "$allowed" || true)"
+
+          if [ -n "$unexpected" ]; then
+            echo "::error::Application source code found in the public repository!"
+            echo "::error::Only workflows, landing pages, assets, and distribution docs belong here."
+            echo "::error::Offending files detected:"
+            echo "$unexpected" | while read -r path; do
+              echo "::error::  - $path"
+            done
+            exit 1
+          fi
+
+          echo "✓ Public repository verified: contains only permitted public files."
+
+      - name: Fail on committed secrets or private key material
+        working-directory: public-repo
+        run: |
+          set -euo pipefail
+
+          # Fail if any private key, certificate, token, or environment file is committed
+          if git ls-files | grep -iE '\.(pem|key|p12|keystore|jks|env)$|(^|/)\.env(\..*)?$' | grep -q .; then
+            echo "::error::A key, certificate, or .env file is committed in the public repository."
+            git ls-files | grep -iE '\.(pem|key|p12|keystore|jks|env)$|(^|/)\.env(\..*)?$'
+            exit 1
+          fi
+
+          echo "✓ Security verified: Zero private keys or secret material found."
