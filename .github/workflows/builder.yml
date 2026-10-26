@@ -95,7 +95,7 @@ jobs:
   # ==========================================
   build-linux:
     name: Build Linux Desktop
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - name: Checkout private source
