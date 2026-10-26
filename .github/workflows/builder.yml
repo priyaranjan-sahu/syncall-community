@@ -9,17 +9,22 @@ on:
         required: true
         default: "main"
       version:
-        description: "Version identifier (e.g. 1.0.0)"
+        description: "Release Version identifier (e.g. 1.0.0 or nightly)"
         type: string
         required: false
         default: "1.0.0"
-      create_release:
-        description: "Publish as public GitHub Release on syncall-community"
-        type: boolean
-        required: false
-        default: false
+      destination:
+        description: "Where to store/publish the generated applications"
+        type: choice
+        required: true
+        default: "private_repo"
+        options:
+          - "private_repo"
+          - "public_repo"
+          - "both"
+          - "artifacts_only"
       is_prerelease:
-        description: "Mark GitHub Release as pre-release"
+        description: "Mark release as pre-release"
         type: boolean
         required: false
         default: false
@@ -293,17 +298,17 @@ jobs:
           retention-days: 14
 
   # ==========================================
-  # 6. Publish Official GitHub Release
+  # 6. Publish Official Application Packages
   # ==========================================
   publish-release:
-    name: Publish GitHub Release
-    if: ${{ inputs.create_release == true || inputs.create_release == 'true' }}
+    name: Store & Publish Application Packages
+    if: ${{ inputs.destination != 'artifacts_only' }}
     needs: [build-windows, build-linux, build-android, build-web, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download all built artifacts
+      - name: Download all built application packages
         uses: actions/download-artifact@v4
         with:
           path: release-assets
@@ -315,43 +320,79 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Create or Update GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare Release Notes
         run: |
           ver="${{ inputs.version || '1.0.0' }}"
-          tag="v$ver"
-          title="SyncAll v$ver — Multi-Cloud Desktop Release"
           target_branch="${{ inputs.branch || inputs.ref || 'main' }}"
-          prerelease_flag=""
-          if [ "${{ inputs.is_prerelease }}" = "true" ]; then
-            prerelease_flag="--prerelease"
-          fi
+          NOTES="### SyncAll v$ver — Multi-Cloud Desktop & Mobile Client
 
-          NOTES="### SyncAll v$ver — Zero-Knowledge Multi-Cloud Desktop Client
-
-**Release Details:**
-- **Source Branch**: \`$target_branch\`
+**Build Details:**
+- **Private Source Branch**: \`$target_branch\`
 - **Built At**: $(date -u '+%Y-%m-%d %H:%M UTC')
+- **Runner**: GitHub Actions (Free Public Compute)
 
-**Features & Enhancements:**
-- ☁️ Multi-Cloud Mesh Topology with live latency & packet visualizer
-- 🗄️ Unified Virtual Super-Drive (RAID-Cloud) aggregator
-- 🔐 Client-side AES-256-CBC Zero-Knowledge Streaming Encryption
-- ⚡ 3-Way Snapshot Synchronization with offline tombstone tracking
-- 🚀 AI Bandwidth Autopilot & network-aware chunking
+**Included Application Packages:**
+- 🪟 Windows: \`SyncAll-v$ver-Windows-x64.zip\`
+- 🐧 Linux: \`SyncAll-v$ver-Linux-x64.tar.gz\`
+- 🤖 Android: \`SyncAll-v$ver-Android.apk\`
+- 🌐 Web: \`SyncAll-v$ver-Web.zip\`
+- 🍎 macOS: \`SyncAll-v$ver-macOS.zip\`
 
 #### Cryptographic Checksums (SHA-256)
 \`\`\`
 $(cat release-assets/SHA256SUMS.txt)
 \`\`\`
 "
-
           echo "$NOTES" > release-notes.md
 
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release upload "$tag" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
-            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --title "$title" --notes-file release-notes.md $prerelease_flag
-          else
-            gh release create "$tag" release-assets/* --repo "$GITHUB_REPOSITORY" --title "$title" --notes-file release-notes.md $prerelease_flag
+      # -------------------------------------------------------------
+      # Target A: Store directly in the PRIVATE REPO (priyaranjan-sahu/syncall)
+      # -------------------------------------------------------------
+      - name: Store Applications in Private Repo (priyaranjan-sahu/syncall)
+        if: ${{ inputs.destination == 'private_repo' || inputs.destination == 'both' }}
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          PRIVATE_REPO="priyaranjan-sahu/syncall"
+          ver="${{ inputs.version || '1.0.0' }}"
+          tag="v$ver"
+          title="SyncAll v$ver (Private Release)"
+          prerelease_flag=""
+          if [ "${{ inputs.is_prerelease }}" = "true" ]; then
+            prerelease_flag="--prerelease"
           fi
+
+          echo "Publishing private application binaries to $PRIVATE_REPO..."
+          if gh release view "$tag" --repo "$PRIVATE_REPO" > /dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --repo "$PRIVATE_REPO" --clobber
+            gh release edit "$tag" --repo "$PRIVATE_REPO" --title "$title" --notes-file release-notes.md $prerelease_flag
+          else
+            gh release create "$tag" release-assets/* --repo "$PRIVATE_REPO" --title "$title" --notes-file release-notes.md $prerelease_flag
+          fi
+          echo "Successfully published private release to https://github.com/$PRIVATE_REPO/releases/tag/$tag"
+
+      # -------------------------------------------------------------
+      # Target B: Store in the PUBLIC COMMUNITY REPO (if explicitly requested)
+      # -------------------------------------------------------------
+      - name: Store Applications in Public Repo (syncall-community)
+        if: ${{ inputs.destination == 'public_repo' || inputs.destination == 'both' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PUBLIC_REPO="$GITHUB_REPOSITORY"
+          ver="${{ inputs.version || '1.0.0' }}"
+          tag="v$ver"
+          title="SyncAll v$ver — Community Distribution"
+          prerelease_flag=""
+          if [ "${{ inputs.is_prerelease }}" = "true" ]; then
+            prerelease_flag="--prerelease"
+          fi
+
+          echo "Publishing public application binaries to $PUBLIC_REPO..."
+          if gh release view "$tag" --repo "$PUBLIC_REPO" > /dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --repo "$PUBLIC_REPO" --clobber
+            gh release edit "$tag" --repo "$PUBLIC_REPO" --title "$title" --notes-file release-notes.md $prerelease_flag
+          else
+            gh release create "$tag" release-assets/* --repo "$PUBLIC_REPO" --title "$title" --notes-file release-notes.md $prerelease_flag
+          fi
+          echo "Successfully published public release to https://github.com/$PUBLIC_REPO/releases/tag/$tag"
